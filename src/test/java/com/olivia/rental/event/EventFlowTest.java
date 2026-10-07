@@ -135,7 +135,18 @@ void postMaintenanceIssueShouldPersistIssueAndGenerateRecommendation()
                     .contentType("application/json")
                     .content(requestBody)
     )
-    .andExpect(status().isCreated());
+    .andExpect(status().isCreated())
+.andExpect(jsonPath("$.event.eventId").value("http_evt_001"))
+.andExpect(jsonPath("$.event.eventType").value("MaintenanceIssueDetected"))
+.andExpect(jsonPath("$.event.propertyId").value("property_001"))
+.andExpect(jsonPath("$.recommendation.eventType")
+        .value("RecommendationGenerated"))
+.andExpect(jsonPath("$.recommendation.propertyId")
+        .value("property_001"))
+.andExpect(jsonPath("$.recommendation.payload")
+        .value(org.hamcrest.Matchers.containsString(
+                "\"triggerEventId\":\"http_evt_001\""
+        )));
 
     List<Event> events = eventRepository.findAll();
 

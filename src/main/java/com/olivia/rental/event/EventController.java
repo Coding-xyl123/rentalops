@@ -20,16 +20,24 @@ public class EventController {
     }
 
     @PostMapping
-    public ResponseEntity<Event> createEvent(@RequestBody Event event) {
+public ResponseEntity<EventProcessingResponse> createEvent(
+        @RequestBody Event event) {
 
-        Event savedEvent = eventService.save(event);
+    Event savedEvent = eventService.save(event);
 
-        recommendationService.generateRecommendation(savedEvent);
+    Event recommendation =
+            recommendationService.generateRecommendation(savedEvent);
 
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(savedEvent);
-    }
+    EventProcessingResponse response =
+            new EventProcessingResponse(
+                    savedEvent,
+                    recommendation
+            );
+
+    return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(response);
+}
 
     @GetMapping("/{eventId}")
     public ResponseEntity<Event> getEvent(@PathVariable String eventId) {

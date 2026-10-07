@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rental Operations Assistant</title>
+  </head>
+
+  <body>
+    <h1>Rental Operations Assistant</h1>
+
+    <p>Report an operational issue and receive a recommended action.</p>
+
+    <form id="issueForm">
+      <label for="propertyId">Property</label>
+      <br />
+      <input id="propertyId" type="text" value="property_001" required />
+
+      <br /><br />
+
+      <label for="issue">Maintenance issue</label>
+      <br />
+      <textarea
+        id="issue"
+        rows="5"
+        cols="50"
+        placeholder="Example: Bathroom light is not working"
+        required
+      ></textarea>
+
+      <br /><br />
+
+      <button type="submit">Get Recommendation</button>
+    </form>
+
+    <div id="result" role="status" aria-live="polite"></div>
+
+    <script>
+      const form = document.getElementById("issueForm");
+      const result = document.getElementById("result");
+
+      form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+
+        const propertyId = document.getElementById("propertyId").value.trim();
+
+        const issue = document.getElementById("issue").value.trim();
+
+        const button = form.querySelector('button[type="submit"]');
+
+        const rentalEvent = {
+          eventId: "evt_" + crypto.randomUUID(),
+          eventType: "MaintenanceIssueDetected",
+          timestamp: new Date().toISOString(),
+          propertyId: propertyId,
+          source: "operator_web",
+          payload: JSON.stringify({
+            description: issue,
+          }),
+        };
+
+        button.disabled = true;
+        result.textContent = "Generating recommendation...";
+
+        try {
+          const response = await fetch("/events", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(rentalEvent),
+          });
+
+          if (!response.ok) {
+            throw new Error("Request failed: " + response.status);
+          }
+
+          const data = await response.json();
+
+          if (!data.recommendation) {
+            throw new Error("No recommendation returned");
+          }
+
+          const recommendation = JSON.parse(data.recommendation.payload);
+
+          result.replaceChildren();
+
+          const heading = document.createElement("h2");
+          heading.textContent = "Recommendation";
+
+          const message = document.createElement("p");
+          message.textContent = recommendation.recommendedAction;
+
+          result.append(heading, message);
+        } catch (error) {
+          result.textContent =
+            "Unable to generate recommendation. Please try again.";
+
+          console.error("Recommendation error:", error);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
