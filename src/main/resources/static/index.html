@@ -20,21 +20,17 @@
       * {
         box-sizing: border-box;
       }
-
       body {
         margin: 0;
       }
-
       button,
       input,
       textarea {
         font: inherit;
       }
-
       button {
         cursor: pointer;
       }
-
       button:disabled {
         cursor: not-allowed;
         opacity: 0.55;
@@ -383,6 +379,58 @@
         margin-top: 12px;
       }
 
+      /* Decision Replay */
+
+      .replay-panel {
+        margin-top: 22px;
+        min-height: 0;
+      }
+
+      .replay-panel[hidden] {
+        display: none;
+      }
+
+      .replay-timeline {
+        display: grid;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .replay-step {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 18px;
+      }
+
+      .replay-step h3 {
+        font-size: 14px;
+        margin: 0 0 12px;
+      }
+
+      .replay-step p {
+        font-size: 13px;
+        line-height: 1.6;
+        margin-top: 7px;
+        overflow-wrap: anywhere;
+      }
+
+      .replay-label {
+        font-weight: 700;
+        color: #475569;
+      }
+
+      .replay-id {
+        color: #94a3b8;
+        font-size: 11px !important;
+      }
+
+      .btn-small {
+        padding: 7px 10px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
       @media (max-width: 900px) {
         .sidebar {
           width: 75px;
@@ -432,6 +480,7 @@
         h1 {
           font-size: 23px;
         }
+
         .stats {
           gap: 8px;
         }
@@ -514,11 +563,9 @@
 
             <form id="issueForm">
               <label for="propertyId">Property ID</label>
-
               <input id="propertyId" value="property_001" required />
 
               <label for="issue">Issue Description</label>
-
               <textarea
                 id="issue"
                 placeholder="Describe what happened, where, and how urgently it needs attention..."
@@ -577,12 +624,13 @@
                   <th>Property</th>
                   <th>Decision</th>
                   <th>Action</th>
+                  <th>Replay</th>
                 </tr>
               </thead>
 
               <tbody id="historyBody">
                 <tr>
-                  <td colspan="4">Loading decisions...</td>
+                  <td colspan="5">Loading decisions...</td>
                 </tr>
               </tbody>
             </table>
@@ -594,6 +642,24 @@
             role="status"
             aria-live="polite"
           ></p>
+        </section>
+
+        <!-- Decision Replay -->
+
+        <section id="replayPanel" class="card panel replay-panel" hidden>
+          <div class="history-header">
+            <div>
+              <h2>Decision Replay</h2>
+              <p class="muted">
+                Original Issue → Recommendation → Operator Decisions
+              </p>
+            </div>
+
+            <button id="closeReplay" class="btn" type="button">Close</button>
+          </div>
+
+          <p id="replayStatus" class="status" role="status"></p>
+          <div id="replayContent" class="replay-timeline"></div>
         </section>
 
         <p class="footer-note">
@@ -611,6 +677,13 @@
       const historyStatus = document.getElementById("historyStatus");
       const refreshHistory = document.getElementById("refreshHistory");
 
+      const replayPanel = document.getElementById("replayPanel");
+      const replayContent = document.getElementById("replayContent");
+      const replayStatus = document.getElementById("replayStatus");
+      const closeReplay = document.getElementById("closeReplay");
+
+      let replayRequestNumber = 0;
+
       function makeElement(tag, className, text) {
         const element = document.createElement(tag);
 
@@ -625,8 +698,156 @@
         return element;
       }
 
-      // Fetch and display recent operator decisions.
+      function parsePayload(event) {
+        if (!event || !event.payload) {
+          return {};
+        }
 
+        try {
+          return typeof event.payload === "string"
+            ? JSON.parse(event.payload)
+            : event.payload;
+        } catch {
+          return {};
+        }
+      }
+
+      function addReplayStep(title, event, details) {
+        const step = makeElement("div", "replay-step");
+
+        step.appendChild(makeElement("h3", "", title));
+
+        if (event) {
+          step.appendChild(
+            makeElement("p", "replay-id", "Event ID: " + event.eventId),
+          );
+
+          if (event.timestamp) {
+            step.appendChild(
+              makeElement(
+                "p",
+                "muted",
+                "Time: " + new Date(event.timestamp).toLocaleString(),
+              ),
+            );
+          }
+        }
+
+        for (const [label, value] of Object.entries(details)) {
+          const paragraph = makeElement("p");
+
+          const labelElement = makeElement(
+            "span",
+            "replay-label",
+            label + ": ",
+          );
+
+          const valueElement = document.createTextNode(
+            value === null || value === undefined || value === ""
+              ? "—"
+              : String(value),
+          );
+
+          paragraph.append(labelElement, valueElement);
+          step.appendChild(paragraph);
+        }
+
+        replayContent.appendChild(step);
+      }
+
+      // Retrieve the full issue -> recommendation -> decision chain.
+      async function viewReplay(recommendationId) {
+        if (!recommendationId) {
+          return;
+        }
+
+        const requestNumber = ++replayRequestNumber;
+
+        replayPanel.hidden = false;
+        replayContent.replaceChildren();
+
+        replayStatus.className = "status pending";
+        replayStatus.textContent = "Loading decision replay...";
+
+        replayPanel.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+
+        try {
+          const response = await fetch(
+            "/events/" + encodeURIComponent(recommendationId) + "/replay",
+          );
+
+          if (!response.ok) {
+            throw new Error("Replay request failed: " + response.status);
+          }
+
+          const replay = await response.json();
+
+          // Ignore an older response if another replay was opened.
+          if (requestNumber !== replayRequestNumber) {
+            return;
+          }
+
+          if (!replay.recommendation) {
+            throw new Error("Recommendation missing from replay");
+          }
+
+          const issue = replay.triggerEvent;
+          const recommendation = replay.recommendation;
+          const decisions = Array.isArray(replay.decisions)
+            ? replay.decisions
+            : [];
+
+          const issuePayload = parsePayload(issue);
+          const recommendationPayload = parsePayload(recommendation);
+
+          addReplayStep("1. Original Issue", issue, {
+            Property: issue?.propertyId,
+            Description: issuePayload.description,
+          });
+
+          addReplayStep("2. Recommendation", recommendation, {
+            Action: recommendationPayload.recommendedAction,
+          });
+
+          if (decisions.length === 0) {
+            addReplayStep("3. Operator Decision", null, {
+              Status: "No decision recorded yet",
+            });
+          } else {
+            decisions.forEach((decision, index) => {
+              const payload = parsePayload(decision);
+
+              addReplayStep("3. Operator Decision " + (index + 1), decision, {
+                Decision: payload.decision,
+                Action: payload.action ?? payload.actionTaken,
+              });
+            });
+          }
+
+          replayStatus.className = "status success";
+          replayStatus.textContent = "Decision replay loaded.";
+        } catch (error) {
+          if (requestNumber !== replayRequestNumber) {
+            return;
+          }
+
+          console.error("Replay error:", error);
+
+          replayStatus.className = "status error";
+          replayStatus.textContent =
+            "Unable to load decision replay. Please try again.";
+        }
+      }
+
+      closeReplay.addEventListener("click", () => {
+        replayRequestNumber++;
+        replayPanel.hidden = true;
+      });
+
+      // Fetch and display recent operator decisions.
       async function loadDecisionHistory() {
         refreshHistory.disabled = true;
         historyStatus.textContent = "Loading recent decisions...";
@@ -650,7 +871,7 @@
               try {
                 return {
                   ...event,
-                  details: JSON.parse(event.payload),
+                  details: parsePayload(event),
                 };
               } catch {
                 return null;
@@ -664,7 +885,7 @@
             const row = document.createElement("tr");
             const cell = document.createElement("td");
 
-            cell.colSpan = 4;
+            cell.colSpan = 5;
             cell.textContent = "No decisions recorded yet.";
 
             row.appendChild(cell);
@@ -699,11 +920,38 @@
             decisionCell.appendChild(badge);
 
             const actionCell = document.createElement("td");
-
             actionCell.textContent =
-              event.details.action || event.details.actionTaken || "—";
+              event.details.action ?? event.details.actionTaken ?? "—";
 
-            row.append(timeCell, propertyCell, decisionCell, actionCell);
+            const replayCell = document.createElement("td");
+
+            const recommendationId = event.details.recommendationEventId;
+
+            if (recommendationId) {
+              const replayButton = makeElement(
+                "button",
+                "btn btn-small",
+                "View Replay",
+              );
+
+              replayButton.type = "button";
+
+              replayButton.addEventListener("click", () => {
+                viewReplay(recommendationId);
+              });
+
+              replayCell.appendChild(replayButton);
+            } else {
+              replayCell.textContent = "—";
+            }
+
+            row.append(
+              timeCell,
+              propertyCell,
+              decisionCell,
+              actionCell,
+              replayCell,
+            );
 
             historyBody.appendChild(row);
           }
@@ -720,7 +968,6 @@
       }
 
       // Submit a maintenance issue.
-
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
@@ -775,8 +1022,7 @@
             throw new Error("No recommendation returned");
           }
 
-          const recommendation = JSON.parse(data.recommendation.payload);
-
+          const recommendation = parsePayload(data.recommendation);
           const recommendedAction = recommendation.recommendedAction;
 
           const recommendationCard = makeElement("div", "recommendation");
@@ -799,6 +1045,7 @@
             "Review this recommendation before recording your decision.",
           );
 
+          // Accept / Modify / Reject buttons.
           for (const decision of ["Accept", "Modify", "Reject"]) {
             const button = makeElement("button", "btn", decision);
 
@@ -863,9 +1110,12 @@
                 }),
               };
 
-              const buttons = actions.querySelectorAll("button");
+              // Only disable decision buttons, not View Replay.
+              const decisionButtons = actions.querySelectorAll(
+                "[data-decision-button]",
+              );
 
-              buttons.forEach((b) => {
+              decisionButtons.forEach((b) => {
                 b.disabled = true;
               });
 
@@ -905,12 +1155,11 @@
                   );
                 }
 
-                // Refresh the table after saving.
                 await loadDecisionHistory();
 
                 console.log("Operator decision saved:", actionEvent);
               } catch (error) {
-                buttons.forEach((b) => {
+                decisionButtons.forEach((b) => {
                   b.disabled = false;
                 });
 
@@ -922,8 +1171,20 @@
               }
             });
 
+            button.dataset.decisionButton = "true";
             actions.appendChild(button);
           }
+
+          // View Replay button for the current recommendation.
+          const replayButton = makeElement("button", "btn", "View Replay");
+
+          replayButton.type = "button";
+
+          replayButton.addEventListener("click", () => {
+            viewReplay(data.recommendation.eventId);
+          });
+
+          actions.appendChild(replayButton);
 
           result.replaceChildren(recommendationCard, actions, status);
         } catch (error) {
@@ -941,7 +1202,6 @@
         }
       });
 
-      // Manual refresh.
       refreshHistory.addEventListener("click", loadDecisionHistory);
 
       // Load real history when the page opens.
