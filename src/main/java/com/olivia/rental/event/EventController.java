@@ -1,10 +1,13 @@
 package com.olivia.rental.event;
 
 import com.olivia.rental.event.recommendation.RecommendationService;
+
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 @RestController
 @RequestMapping("/events")
 public class EventController {
@@ -45,4 +48,61 @@ public ResponseEntity<EventProcessingResponse> createEvent(
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
+
+
+
+@GetMapping("/{recommendationId}/replay")
+public ResponseEntity<DecisionReplayResponse> getDecisionReplay(
+        @PathVariable String recommendationId) {
+
+    Optional<Event> recommendation =
+            eventService.findById(recommendationId);
+
+    if (recommendation.isEmpty() ||
+            !"RecommendationGenerated".equals(
+                    recommendation.get().getEventType())) {
+        return ResponseEntity.notFound().build();
+    }
+
+    Optional<Event> triggerEvent =
+            eventService.findTriggerEventForRecommendation(
+                    recommendationId
+            );
+
+    if (triggerEvent.isEmpty()) {
+        return ResponseEntity.notFound().build();
+    }
+
+    List<Event> decisions =
+            eventService.findDecisionsForRecommendation(
+                    recommendationId
+            );
+
+    DecisionReplayResponse replay =
+            new DecisionReplayResponse(
+                    triggerEvent.get(),
+                    recommendation.get(),
+                    decisions
+            );
+
+    return ResponseEntity.ok(replay);
+}
+
+    @GetMapping("/{recommendationId}/decisions")
+public List<Event> getDecisionsForRecommendation(
+        @PathVariable String recommendationId) {
+
+    return eventService.findDecisionsForRecommendation(
+            recommendationId
+    );
+
+    
+}
+
+
+@GetMapping
+public List<Event> getRecentEvents() {
+    return eventService.getRecentEvents();
+}
+
 }

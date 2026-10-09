@@ -3,64 +3,758 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rental Operations Assistant</title>
+    <title>RentalOps | Decision Console</title>
+
+    <style>
+      :root {
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: #17243b;
+        background: #f5f7fb;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .layout {
+        min-height: 100vh;
+        display: flex;
+      }
+
+      .sidebar {
+        width: 225px;
+        flex-shrink: 0;
+        background: #101e35;
+        color: white;
+        padding: 28px 18px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .brand {
+        font-size: 23px;
+        font-weight: 800;
+        letter-spacing: -0.8px;
+        margin-bottom: 42px;
+      }
+
+      .brand span {
+        color: #60a5fa;
+      }
+
+      .nav {
+        padding: 12px 14px;
+        border-radius: 9px;
+        margin-bottom: 6px;
+        font-size: 14px;
+        color: #bdc9dc;
+      }
+
+      .nav.active {
+        background: #294267;
+        color: white;
+        font-weight: 600;
+      }
+
+      .sidebar-footer {
+        margin-top: auto;
+        font-size: 11px;
+        color: #8ea0bc;
+        letter-spacing: 1px;
+      }
+
+      main {
+        flex: 1;
+        min-width: 0;
+        padding: 36px;
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+
+      h1 {
+        font-size: 29px;
+        letter-spacing: -0.8px;
+        margin: 0 0 7px;
+      }
+
+      h2 {
+        font-size: 17px;
+        margin: 0 0 7px;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .muted {
+        color: #697991;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .online {
+        background: #dcfce7;
+        color: #166534;
+        padding: 9px 13px;
+        border-radius: 25px;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 22px;
+      }
+
+      .card {
+        background: white;
+        border: 1px solid #e4e9f1;
+        border-radius: 14px;
+        box-shadow: 0 3px 15px rgba(25, 45, 75, 0.025);
+      }
+
+      .stat {
+        padding: 22px;
+      }
+
+      .stat-label {
+        color: #718096;
+        font-size: 13px;
+      }
+
+      .stat-value {
+        font-size: 27px;
+        font-weight: 750;
+        margin-top: 9px;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        align-items: start;
+      }
+
+      .panel {
+        padding: 25px;
+        min-height: 350px;
+      }
+
+      .section-heading {
+        margin-bottom: 23px;
+      }
+
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 650;
+        margin: 17px 0 8px;
+      }
+
+      input,
+      textarea {
+        display: block;
+        width: 100%;
+        border: 1px solid #d6deea;
+        border-radius: 9px;
+        padding: 12px 13px;
+        background: white;
+        color: #17243b;
+        outline: none;
+      }
+
+      input:focus,
+      textarea:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px #dbeafe;
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 130px;
+      }
+
+      .btn {
+        border: 1px solid #d6deea;
+        border-radius: 9px;
+        padding: 11px 15px;
+        font-size: 13px;
+        font-weight: 700;
+        background: white;
+        color: #334155;
+      }
+
+      .btn-primary {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: white;
+      }
+
+      .btn-accept {
+        background: #059669;
+        border-color: #059669;
+        color: white;
+      }
+
+      .btn-reject {
+        color: #b91c1c;
+        border-color: #fecaca;
+      }
+
+      .submit {
+        width: 100%;
+        margin-top: 20px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 9px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+      }
+
+      .empty {
+        text-align: center;
+        padding: 55px 10px;
+        color: #8190a5;
+      }
+
+      .empty-icon {
+        font-size: 32px;
+        margin-bottom: 15px;
+      }
+
+      .recommendation {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 10px;
+        padding: 19px;
+        margin-top: 18px;
+      }
+
+      .eyebrow {
+        color: #1d4ed8;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.9px;
+        margin-bottom: 11px;
+      }
+
+      .recommendation-text {
+        font-size: 16px;
+        line-height: 1.6;
+        font-weight: 650;
+      }
+
+      .detail {
+        font-size: 12px;
+        color: #64748b;
+        margin-top: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .status {
+        margin-top: 17px;
+        font-size: 13px;
+        min-height: 20px;
+      }
+
+      .success {
+        color: #047857;
+      }
+      .error {
+        color: #b91c1c;
+      }
+      .pending {
+        color: #64748b;
+      }
+
+      .footer-note {
+        margin-top: 24px;
+        font-size: 12px;
+        color: #94a3b8;
+      }
+
+      /* Decision History */
+
+      .history-panel {
+        margin-top: 22px;
+        min-height: 0;
+      }
+
+      .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .table-wrapper {
+        width: 100%;
+        overflow-x: auto;
+      }
+
+      .history-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 13px;
+      }
+
+      .history-table th {
+        background: #f8fafc;
+        color: #64748b;
+        font-weight: 650;
+        padding: 13px 14px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      .history-table td {
+        padding: 15px 14px;
+        border-bottom: 1px solid #edf0f5;
+        vertical-align: top;
+        overflow-wrap: anywhere;
+      }
+
+      .history-table tr:last-child td {
+        border-bottom: none;
+      }
+
+      .decision-badge {
+        display: inline-block;
+        padding: 5px 9px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 750;
+      }
+
+      .decision-accepted {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .decision-modified {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .decision-rejected {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .history-status {
+        margin-top: 12px;
+      }
+
+      @media (max-width: 900px) {
+        .sidebar {
+          width: 75px;
+          padding: 22px 10px;
+        }
+
+        .brand {
+          font-size: 16px;
+        }
+
+        .nav {
+          font-size: 11px;
+          padding: 12px 7px;
+        }
+
+        .sidebar-footer {
+          display: none;
+        }
+        main {
+          padding: 22px;
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .layout {
+          display: block;
+        }
+
+        .sidebar {
+          width: 100%;
+          padding: 13px 18px;
+        }
+
+        .brand {
+          margin: 0;
+        }
+        .sidebar nav {
+          display: none;
+        }
+        main {
+          padding: 18px;
+        }
+        h1 {
+          font-size: 23px;
+        }
+        .stats {
+          gap: 8px;
+        }
+        .stat {
+          padding: 12px;
+        }
+        .stat-value {
+          font-size: 22px;
+        }
+        .stat-label {
+          font-size: 11px;
+        }
+        .panel {
+          padding: 18px;
+        }
+        .online {
+          font-size: 10px;
+        }
+
+        .history-header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+    </style>
   </head>
 
   <body>
-    <h1>Rental Operations Assistant</h1>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">◈ Rental<span>Ops</span></div>
 
-    <p>Report an operational issue and receive a recommended action.</p>
+        <nav aria-label="Main navigation">
+          <div class="nav active">▦ &nbsp; Overview</div>
+          <div class="nav">▤ &nbsp; New Issue</div>
+          <div class="nav">◷ &nbsp; Decisions</div>
+          <div class="nav">▥ &nbsp; Analytics</div>
+        </nav>
 
-    <form id="issueForm">
-      <label for="propertyId">Property</label>
-      <br />
-      <input id="propertyId" type="text" value="property_001" required />
+        <div class="sidebar-footer">OPERATIONS CONSOLE</div>
+      </aside>
 
-      <br /><br />
+      <main>
+        <header class="topbar">
+          <div>
+            <h1>Operations Overview</h1>
+            <p class="muted">
+              Turn operational issues into actionable decisions.
+            </p>
+          </div>
 
-      <label for="issue">Maintenance issue</label>
-      <br />
-      <textarea
-        id="issue"
-        rows="5"
-        cols="50"
-        placeholder="Example: Bathroom light is not working"
-        required
-      ></textarea>
+          <span class="online">● Local Development</span>
+        </header>
 
-      <br /><br />
+        <section class="stats" aria-label="Operational metrics">
+          <div class="card stat">
+            <div class="stat-label">Open Issues</div>
+            <div class="stat-value">—</div>
+          </div>
 
-      <button type="submit">Get Recommendation</button>
-    </form>
+          <div class="card stat">
+            <div class="stat-label">Decisions Recorded</div>
+            <div class="stat-value">—</div>
+          </div>
 
-    <div id="result" role="status" aria-live="polite"></div>
+          <div class="card stat">
+            <div class="stat-label">Resolution Rate</div>
+            <div class="stat-value">—</div>
+          </div>
+        </section>
+
+        <section class="workspace">
+          <div class="card panel">
+            <div class="section-heading">
+              <h2>Report an Issue</h2>
+              <p class="muted">
+                Submit a maintenance issue for decision support.
+              </p>
+            </div>
+
+            <form id="issueForm">
+              <label for="propertyId">Property ID</label>
+
+              <input id="propertyId" value="property_001" required />
+
+              <label for="issue">Issue Description</label>
+
+              <textarea
+                id="issue"
+                placeholder="Describe what happened, where, and how urgently it needs attention..."
+                required
+              ></textarea>
+
+              <button
+                class="btn btn-primary submit"
+                type="submit"
+                id="submitButton"
+              >
+                Generate Recommendation →
+              </button>
+            </form>
+          </div>
+
+          <div class="card panel">
+            <div class="section-heading">
+              <h2>Decision Workspace</h2>
+              <p class="muted">
+                Review the recommendation and record your decision.
+              </p>
+            </div>
+
+            <div id="result" role="status" aria-live="polite">
+              <div class="empty">
+                <div class="empty-icon">◇</div>
+                <p>No recommendation yet</p>
+                <p class="muted">Submit an issue to get started.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Decision History -->
+
+        <section class="card panel history-panel">
+          <div class="history-header">
+            <div>
+              <h2>Decision History</h2>
+              <p class="muted">
+                Recent operator decisions retrieved from PostgreSQL.
+              </p>
+            </div>
+
+            <button id="refreshHistory" class="btn" type="button">
+              ↻ Refresh
+            </button>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Property</th>
+                  <th>Decision</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+
+              <tbody id="historyBody">
+                <tr>
+                  <td colspan="4">Loading decisions...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p
+            id="historyStatus"
+            class="muted history-status"
+            role="status"
+            aria-live="polite"
+          ></p>
+        </section>
+
+        <p class="footer-note">
+          RentalOps · Decision Support MVP · Rule-based recommendations
+        </p>
+      </main>
+    </div>
 
     <script>
       const form = document.getElementById("issueForm");
       const result = document.getElementById("result");
+      const submitButton = document.getElementById("submitButton");
 
-      form.addEventListener("submit", async function (event) {
+      const historyBody = document.getElementById("historyBody");
+      const historyStatus = document.getElementById("historyStatus");
+      const refreshHistory = document.getElementById("refreshHistory");
+
+      function makeElement(tag, className, text) {
+        const element = document.createElement(tag);
+
+        if (className) {
+          element.className = className;
+        }
+
+        if (text !== undefined) {
+          element.textContent = text;
+        }
+
+        return element;
+      }
+
+      // Fetch and display recent operator decisions.
+
+      async function loadDecisionHistory() {
+        refreshHistory.disabled = true;
+        historyStatus.textContent = "Loading recent decisions...";
+
+        try {
+          const response = await fetch("/events");
+
+          if (!response.ok) {
+            throw new Error("History request failed: " + response.status);
+          }
+
+          const events = await response.json();
+
+          if (!Array.isArray(events)) {
+            throw new Error("Unexpected history response");
+          }
+
+          const decisions = events
+            .filter((event) => event.eventType === "OperatorActionTaken")
+            .map((event) => {
+              try {
+                return {
+                  ...event,
+                  details: JSON.parse(event.payload),
+                };
+              } catch {
+                return null;
+              }
+            })
+            .filter((event) => event !== null);
+
+          historyBody.replaceChildren();
+
+          if (decisions.length === 0) {
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+
+            cell.colSpan = 4;
+            cell.textContent = "No decisions recorded yet.";
+
+            row.appendChild(cell);
+            historyBody.appendChild(row);
+          }
+
+          for (const event of decisions) {
+            const row = document.createElement("tr");
+
+            const timeCell = document.createElement("td");
+            timeCell.textContent = new Date(event.timestamp).toLocaleString();
+
+            const propertyCell = document.createElement("td");
+            propertyCell.textContent = event.propertyId;
+
+            const decisionCell = document.createElement("td");
+            const badge = document.createElement("span");
+
+            const decision = event.details.decision || "UNKNOWN";
+
+            badge.className = "decision-badge";
+
+            if (decision === "ACCEPTED") {
+              badge.classList.add("decision-accepted");
+            } else if (decision === "MODIFIED") {
+              badge.classList.add("decision-modified");
+            } else if (decision === "REJECTED") {
+              badge.classList.add("decision-rejected");
+            }
+
+            badge.textContent = decision;
+            decisionCell.appendChild(badge);
+
+            const actionCell = document.createElement("td");
+
+            actionCell.textContent =
+              event.details.action || event.details.actionTaken || "—";
+
+            row.append(timeCell, propertyCell, decisionCell, actionCell);
+
+            historyBody.appendChild(row);
+          }
+
+          historyStatus.textContent = `Showing ${decisions.length} recent decisions.`;
+        } catch (error) {
+          console.error("History error:", error);
+
+          historyStatus.textContent =
+            "Unable to load decision history. Please try again.";
+        } finally {
+          refreshHistory.disabled = false;
+        }
+      }
+
+      // Submit a maintenance issue.
+
+      form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
         const propertyId = document.getElementById("propertyId").value.trim();
 
         const issue = document.getElementById("issue").value.trim();
 
-        const button = form.querySelector('button[type="submit"]');
+        if (!propertyId || !issue) {
+          result.replaceChildren(
+            makeElement(
+              "p",
+              "status error",
+              "Please enter a property and issue.",
+            ),
+          );
+          return;
+        }
 
         const rentalEvent = {
           eventId: "evt_" + crypto.randomUUID(),
           eventType: "MaintenanceIssueDetected",
           timestamp: new Date().toISOString(),
-          propertyId: propertyId,
+          propertyId,
           source: "operator_web",
           payload: JSON.stringify({
             description: issue,
           }),
         };
 
-        button.disabled = true;
-        result.textContent = "Generating recommendation...";
+        submitButton.disabled = true;
+
+        result.replaceChildren(
+          makeElement("p", "status pending", "Generating recommendation..."),
+        );
 
         try {
           const response = await fetch("/events", {
@@ -83,24 +777,175 @@
 
           const recommendation = JSON.parse(data.recommendation.payload);
 
-          result.replaceChildren();
+          const recommendedAction = recommendation.recommendedAction;
 
-          const heading = document.createElement("h2");
-          heading.textContent = "Recommendation";
+          const recommendationCard = makeElement("div", "recommendation");
 
-          const message = document.createElement("p");
-          message.textContent = recommendation.recommendedAction;
+          recommendationCard.append(
+            makeElement("div", "eyebrow", "RECOMMENDED ACTION"),
+            makeElement("div", "recommendation-text", recommendedAction),
+            makeElement(
+              "div",
+              "detail",
+              "Recommendation ID: " + data.recommendation.eventId,
+            ),
+          );
 
-          result.append(heading, message);
+          const actions = makeElement("div", "actions");
+
+          const status = makeElement(
+            "p",
+            "status pending",
+            "Review this recommendation before recording your decision.",
+          );
+
+          for (const decision of ["Accept", "Modify", "Reject"]) {
+            const button = makeElement("button", "btn", decision);
+
+            button.type = "button";
+
+            if (decision === "Accept") {
+              button.classList.add("btn-accept");
+            }
+
+            if (decision === "Reject") {
+              button.classList.add("btn-reject");
+            }
+
+            button.addEventListener("click", async () => {
+              let modifiedAction = null;
+
+              if (decision === "Modify") {
+                modifiedAction = window.prompt(
+                  "Enter the action you would take instead:",
+                  recommendedAction,
+                );
+
+                if (modifiedAction === null) {
+                  return;
+                }
+
+                modifiedAction = modifiedAction.trim();
+
+                if (!modifiedAction) {
+                  status.className = "status error";
+                  status.textContent =
+                    "Please enter a valid alternative action.";
+                  return;
+                }
+              }
+
+              const decisionValue =
+                decision === "Accept"
+                  ? "ACCEPTED"
+                  : decision === "Modify"
+                    ? "MODIFIED"
+                    : "REJECTED";
+
+              const selectedAction =
+                decision === "Accept"
+                  ? recommendedAction
+                  : decision === "Modify"
+                    ? modifiedAction
+                    : null;
+
+              const actionEvent = {
+                eventId: "evt_" + crypto.randomUUID(),
+                eventType: "OperatorActionTaken",
+                timestamp: new Date().toISOString(),
+                propertyId,
+                source: "operator_web",
+                payload: JSON.stringify({
+                  recommendationEventId: data.recommendation.eventId,
+                  decision: decisionValue,
+                  action: selectedAction,
+                  originalRecommendation: recommendedAction,
+                }),
+              };
+
+              const buttons = actions.querySelectorAll("button");
+
+              buttons.forEach((b) => {
+                b.disabled = true;
+              });
+
+              status.className = "status pending";
+              status.textContent = "Saving decision...";
+
+              try {
+                const saved = await fetch("/events", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify(actionEvent),
+                });
+
+                if (!saved.ok) {
+                  throw new Error("Save failed: " + saved.status);
+                }
+
+                button.textContent =
+                  decision === "Accept"
+                    ? "✓ Accepted"
+                    : decision === "Modify"
+                      ? "✓ Modified"
+                      : "✓ Rejected";
+
+                status.className = "status success";
+                status.textContent = "Decision saved successfully.";
+
+                if (decision === "Modify") {
+                  recommendationCard.appendChild(
+                    makeElement(
+                      "p",
+                      "detail",
+                      "Operator's alternative action: " + modifiedAction,
+                    ),
+                  );
+                }
+
+                // Refresh the table after saving.
+                await loadDecisionHistory();
+
+                console.log("Operator decision saved:", actionEvent);
+              } catch (error) {
+                buttons.forEach((b) => {
+                  b.disabled = false;
+                });
+
+                status.className = "status error";
+                status.textContent =
+                  "Could not save decision. Please try again.";
+
+                console.error(error);
+              }
+            });
+
+            actions.appendChild(button);
+          }
+
+          result.replaceChildren(recommendationCard, actions, status);
         } catch (error) {
-          result.textContent =
-            "Unable to generate recommendation. Please try again.";
+          result.replaceChildren(
+            makeElement(
+              "p",
+              "status error",
+              "Unable to generate recommendation. Please try again.",
+            ),
+          );
 
-          console.error("Recommendation error:", error);
+          console.error(error);
         } finally {
-          button.disabled = false;
+          submitButton.disabled = false;
         }
       });
+
+      // Manual refresh.
+      refreshHistory.addEventListener("click", loadDecisionHistory);
+
+      // Load real history when the page opens.
+      loadDecisionHistory();
     </script>
   </body>
 </html>
