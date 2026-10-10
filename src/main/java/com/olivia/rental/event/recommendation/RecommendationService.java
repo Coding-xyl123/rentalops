@@ -1,11 +1,12 @@
+
 package com.olivia.rental.event.recommendation;
 
 import com.olivia.rental.event.Event;
 import com.olivia.rental.event.EventService;
+
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.UUID;
 
 @Service
 public class RecommendationService {
@@ -18,16 +19,31 @@ public class RecommendationService {
 
     public Event generateRecommendation(Event triggerEvent) {
 
-        if (!"MaintenanceIssueDetected".equals(triggerEvent.getEventType())) {
+        if (!"MaintenanceIssueDetected".equals(
+                triggerEvent.getEventType())) {
             return null;
         }
 
+        // Deterministic ID: same issue -> same recommendation ID.
+        String recommendationId =
+                "rec_" + triggerEvent.getEventId();
+
+        // Return an existing recommendation if already generated.
+        var existing =
+                eventService.findById(recommendationId);
+
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
         String recommendationPayload =
-                "{\"triggerEventId\":\"" + triggerEvent.getEventId() +
-                "\",\"recommendedAction\":\"Resolve maintenance issue before next guest check-in\"}";
+                "{\"triggerEventId\":\""
+                        + triggerEvent.getEventId()
+                        + "\",\"recommendedAction\":"
+                        + "\"Resolve maintenance issue before next guest check-in\"}";
 
         Event recommendation = new Event(
-                "rec_" + UUID.randomUUID(),
+                recommendationId,
                 "RecommendationGenerated",
                 Instant.now(),
                 triggerEvent.getPropertyId(),
