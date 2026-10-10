@@ -1,3 +1,4 @@
+
 package com.olivia.rental.event;
 
 import com.olivia.rental.event.recommendation.RecommendationService;
@@ -8,6 +9,7 @@ import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 @RestController
 @RequestMapping("/events")
 public class EventController {
@@ -23,86 +25,113 @@ public class EventController {
     }
 
     @PostMapping
-public ResponseEntity<EventProcessingResponse> createEvent(
-        @RequestBody Event event) {
+    public ResponseEntity<EventProcessingResponse> createEvent(
+            @RequestBody Event event) {
 
-    Event savedEvent = eventService.save(event);
+        // Check whether this event was already processed.
+        Optional<Event> existing =
+                eventService.findById(event.getEventId());
 
-    Event recommendation =
-            recommendationService.generateRecommendation(savedEvent);
+        if (existing.isPresent()) {
 
-    EventProcessingResponse response =
-            new EventProcessingResponse(
-                    savedEvent,
-                    recommendation
+            // EventService.save() validates that the
+            // existing event has the same content.
+            Event savedEvent = eventService.save(event);
+
+            // Return the original recommendation, if one exists.
+            Event recommendation =
+                    eventService.findRecommendationForTrigger(
+                            savedEvent.getEventId()
+                    ).orElse(null);
+
+            return ResponseEntity.ok(
+                    new EventProcessingResponse(
+                            savedEvent,
+                            recommendation
+                    )
             );
+        }
 
-    return ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(response);
-}
+        // First submission.
+        Event savedEvent = eventService.save(event);
+
+        Event recommendation =
+                recommendationService.generateRecommendation(savedEvent);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(new EventProcessingResponse(
+                        savedEvent,
+                        recommendation
+                ));
+    }
+
+    @ExceptionHandler(EventConflictException.class)
+    public ResponseEntity<String> handleEventConflict(
+            EventConflictException exception) {
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(exception.getMessage());
+    }
 
     @GetMapping("/{eventId}")
-    public ResponseEntity<Event> getEvent(@PathVariable String eventId) {
+    public ResponseEntity<Event> getEvent(
+            @PathVariable String eventId) {
+
         return eventService.findById(eventId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @GetMapping("/{recommendationId}/replay")
+    public ResponseEntity<DecisionReplayResponse> getDecisionReplay(
+            @PathVariable String recommendationId) {
 
+        Optional<Event> recommendation =
+                eventService.findById(recommendationId);
 
-@GetMapping("/{recommendationId}/replay")
-public ResponseEntity<DecisionReplayResponse> getDecisionReplay(
-        @PathVariable String recommendationId) {
+        if (recommendation.isEmpty() ||
+                !"RecommendationGenerated".equals(
+                        recommendation.get().getEventType())) {
+            return ResponseEntity.notFound().build();
+        }
 
-    Optional<Event> recommendation =
-            eventService.findById(recommendationId);
+        Optional<Event> triggerEvent =
+                eventService.findTriggerEventForRecommendation(
+                        recommendationId
+                );
 
-    if (recommendation.isEmpty() ||
-            !"RecommendationGenerated".equals(
-                    recommendation.get().getEventType())) {
-        return ResponseEntity.notFound().build();
+        if (triggerEvent.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        List<Event> decisions =
+                eventService.findDecisionsForRecommendation(
+                        recommendationId
+                );
+
+        DecisionReplayResponse replay =
+                new DecisionReplayResponse(
+                        triggerEvent.get(),
+                        recommendation.get(),
+                        decisions
+                );
+
+        return ResponseEntity.ok(replay);
     }
-
-    Optional<Event> triggerEvent =
-            eventService.findTriggerEventForRecommendation(
-                    recommendationId
-            );
-
-    if (triggerEvent.isEmpty()) {
-        return ResponseEntity.notFound().build();
-    }
-
-    List<Event> decisions =
-            eventService.findDecisionsForRecommendation(
-                    recommendationId
-            );
-
-    DecisionReplayResponse replay =
-            new DecisionReplayResponse(
-                    triggerEvent.get(),
-                    recommendation.get(),
-                    decisions
-            );
-
-    return ResponseEntity.ok(replay);
-}
 
     @GetMapping("/{recommendationId}/decisions")
-public List<Event> getDecisionsForRecommendation(
-        @PathVariable String recommendationId) {
+    public List<Event> getDecisionsForRecommendation(
+            @PathVariable String recommendationId) {
 
-    return eventService.findDecisionsForRecommendation(
-            recommendationId
-    );
+        return eventService.findDecisionsForRecommendation(
+                recommendationId
+        );
+    }
 
-    
-}
-
-
-@GetMapping
-public List<Event> getRecentEvents() {
-    return eventService.getRecentEvents();
-}
-
+    @GetMapping
+    public List<Event> getRecentEvents() {
+        return eventService.getRecentEvents();
+    }
 }
