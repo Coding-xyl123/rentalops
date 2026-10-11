@@ -20,17 +20,21 @@
       * {
         box-sizing: border-box;
       }
+
       body {
         margin: 0;
       }
+
       button,
       input,
       textarea {
         font: inherit;
       }
+
       button {
         cursor: pointer;
       }
+
       button:disabled {
         cursor: not-allowed;
         opacity: 0.55;
@@ -263,18 +267,67 @@
         margin-top: 18px;
       }
 
+      .recommendation-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
       .eyebrow {
         color: #1d4ed8;
         font-size: 11px;
         font-weight: 800;
         letter-spacing: 0.9px;
-        margin-bottom: 11px;
       }
 
       .recommendation-text {
         font-size: 16px;
         line-height: 1.6;
         font-weight: 650;
+      }
+
+      .recommendation-explanation {
+        font-size: 13px;
+        color: #475569;
+        line-height: 1.7;
+        margin-top: 14px;
+      }
+
+      .priority-badge {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.4px;
+        white-space: nowrap;
+      }
+
+      .priority-critical {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .priority-high {
+        background: #ffedd5;
+        color: #9a3412;
+      }
+
+      .priority-medium {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .priority-low {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .priority-unknown {
+        background: #e2e8f0;
+        color: #475569;
       }
 
       .detail {
@@ -293,9 +346,11 @@
       .success {
         color: #047857;
       }
+
       .error {
         color: #b91c1c;
       }
+
       .pending {
         color: #64748b;
       }
@@ -449,6 +504,7 @@
         .sidebar-footer {
           display: none;
         }
+
         main {
           padding: 22px;
         }
@@ -471,12 +527,15 @@
         .brand {
           margin: 0;
         }
+
         .sidebar nav {
           display: none;
         }
+
         main {
           padding: 18px;
         }
+
         h1 {
           font-size: 23px;
         }
@@ -484,18 +543,23 @@
         .stats {
           gap: 8px;
         }
+
         .stat {
           padding: 12px;
         }
+
         .stat-value {
           font-size: 22px;
         }
+
         .stat-label {
           font-size: 11px;
         }
+
         .panel {
           padding: 18px;
         }
+
         .online {
           font-size: 10px;
         }
@@ -659,6 +723,7 @@
           </div>
 
           <p id="replayStatus" class="status" role="status"></p>
+
           <div id="replayContent" class="replay-timeline"></div>
         </section>
 
@@ -710,6 +775,23 @@
         } catch {
           return {};
         }
+      }
+
+      function createPriorityBadge(priority) {
+        const normalized = String(priority || "UNKNOWN").toUpperCase();
+
+        const badge = makeElement("span", "priority-badge", normalized);
+
+        const classes = {
+          CRITICAL: "priority-critical",
+          HIGH: "priority-high",
+          MEDIUM: "priority-medium",
+          LOW: "priority-low",
+        };
+
+        badge.classList.add(classes[normalized] || "priority-unknown");
+
+        return badge;
       }
 
       function addReplayStep(title, event, details) {
@@ -785,7 +867,6 @@
 
           const replay = await response.json();
 
-          // Ignore an older response if another replay was opened.
           if (requestNumber !== replayRequestNumber) {
             return;
           }
@@ -796,6 +877,7 @@
 
           const issue = replay.triggerEvent;
           const recommendation = replay.recommendation;
+
           const decisions = Array.isArray(replay.decisions)
             ? replay.decisions
             : [];
@@ -809,7 +891,10 @@
           });
 
           addReplayStep("2. Recommendation", recommendation, {
+            Priority: recommendationPayload.priority || "Not classified",
             Action: recommendationPayload.recommendedAction,
+            Explanation:
+              recommendationPayload.explanation || "No explanation available",
           });
 
           if (decisions.length === 0) {
@@ -867,17 +952,10 @@
 
           const decisions = events
             .filter((event) => event.eventType === "OperatorActionTaken")
-            .map((event) => {
-              try {
-                return {
-                  ...event,
-                  details: parsePayload(event),
-                };
-              } catch {
-                return null;
-              }
-            })
-            .filter((event) => event !== null);
+            .map((event) => ({
+              ...event,
+              details: parsePayload(event),
+            }));
 
           historyBody.replaceChildren();
 
@@ -896,14 +974,16 @@
             const row = document.createElement("tr");
 
             const timeCell = document.createElement("td");
-            timeCell.textContent = new Date(event.timestamp).toLocaleString();
+            timeCell.textContent = event.timestamp
+              ? new Date(event.timestamp).toLocaleString()
+              : "—";
 
             const propertyCell = document.createElement("td");
-            propertyCell.textContent = event.propertyId;
+            propertyCell.textContent = event.propertyId || "—";
 
             const decisionCell = document.createElement("td");
-            const badge = document.createElement("span");
 
+            const badge = document.createElement("span");
             const decision = event.details.decision || "UNKNOWN";
 
             badge.className = "decision-badge";
@@ -920,6 +1000,7 @@
             decisionCell.appendChild(badge);
 
             const actionCell = document.createElement("td");
+
             actionCell.textContent =
               event.details.action ?? event.details.actionTaken ?? "—";
 
@@ -1023,13 +1104,32 @@
           }
 
           const recommendation = parsePayload(data.recommendation);
-          const recommendedAction = recommendation.recommendedAction;
+
+          const recommendedAction =
+            recommendation.recommendedAction || "No action specified";
+
+          const priority = recommendation.priority || "UNKNOWN";
+
+          const explanation =
+            recommendation.explanation ||
+            "No explanation available for this recommendation.";
 
           const recommendationCard = makeElement("div", "recommendation");
 
-          recommendationCard.append(
+          const recommendationHeader = makeElement(
+            "div",
+            "recommendation-header",
+          );
+
+          recommendationHeader.append(
             makeElement("div", "eyebrow", "RECOMMENDED ACTION"),
+            createPriorityBadge(priority),
+          );
+
+          recommendationCard.append(
+            recommendationHeader,
             makeElement("div", "recommendation-text", recommendedAction),
+            makeElement("p", "recommendation-explanation", explanation),
             makeElement(
               "div",
               "detail",
@@ -1076,6 +1176,7 @@
 
                 if (!modifiedAction) {
                   status.className = "status error";
+
                   status.textContent =
                     "Please enter a valid alternative action.";
                   return;
@@ -1110,7 +1211,7 @@
                 }),
               };
 
-              // Only disable decision buttons, not View Replay.
+              // Disable only decision buttons.
               const decisionButtons = actions.querySelectorAll(
                 "[data-decision-button]",
               );
@@ -1120,6 +1221,7 @@
               });
 
               status.className = "status pending";
+
               status.textContent = "Saving decision...";
 
               try {
@@ -1143,6 +1245,7 @@
                       : "✓ Rejected";
 
                 status.className = "status success";
+
                 status.textContent = "Decision saved successfully.";
 
                 if (decision === "Modify") {
@@ -1164,6 +1267,7 @@
                 });
 
                 status.className = "status error";
+
                 status.textContent =
                   "Could not save decision. Please try again.";
 
@@ -1172,10 +1276,11 @@
             });
 
             button.dataset.decisionButton = "true";
+
             actions.appendChild(button);
           }
 
-          // View Replay button for the current recommendation.
+          // View Replay for the current recommendation.
           const replayButton = makeElement("button", "btn", "View Replay");
 
           replayButton.type = "button";
@@ -1204,7 +1309,7 @@
 
       refreshHistory.addEventListener("click", loadDecisionHistory);
 
-      // Load real history when the page opens.
+      // Load real decision history when the page opens.
       loadDecisionHistory();
     </script>
   </body>

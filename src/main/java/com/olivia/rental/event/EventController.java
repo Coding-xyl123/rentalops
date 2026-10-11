@@ -1,8 +1,6 @@
 
 package com.olivia.rental.event;
 
-import com.olivia.rental.event.recommendation.RecommendationService;
-
 import java.util.List;
 import java.util.Optional;
 
@@ -15,57 +13,34 @@ import org.springframework.web.bind.annotation.*;
 public class EventController {
 
     private final EventService eventService;
-    private final RecommendationService recommendationService;
+    private final EventProcessingService eventProcessingService;
 
     public EventController(
             EventService eventService,
-            RecommendationService recommendationService) {
+            EventProcessingService eventProcessingService) {
+
         this.eventService = eventService;
-        this.recommendationService = recommendationService;
+        this.eventProcessingService = eventProcessingService;
     }
 
+    // Create a new event or safely handle an identical retry.
     @PostMapping
     public ResponseEntity<EventProcessingResponse> createEvent(
             @RequestBody Event event) {
 
-        // Check whether this event was already processed.
-        Optional<Event> existing =
-                eventService.findById(event.getEventId());
+        EventProcessingService.ProcessingResult result =
+                eventProcessingService.process(event);
 
-        if (existing.isPresent()) {
-
-            // EventService.save() validates that the
-            // existing event has the same content.
-            Event savedEvent = eventService.save(event);
-
-            // Return the original recommendation, if one exists.
-            Event recommendation =
-                    eventService.findRecommendationForTrigger(
-                            savedEvent.getEventId()
-                    ).orElse(null);
-
-            return ResponseEntity.ok(
-                    new EventProcessingResponse(
-                            savedEvent,
-                            recommendation
-                    )
-            );
-        }
-
-        // First submission.
-        Event savedEvent = eventService.save(event);
-
-        Event recommendation =
-                recommendationService.generateRecommendation(savedEvent);
+        HttpStatus status = result.created()
+                ? HttpStatus.CREATED
+                : HttpStatus.OK;
 
         return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(new EventProcessingResponse(
-                        savedEvent,
-                        recommendation
-                ));
+                .status(status)
+                .body(result.response());
     }
 
+    // Same event ID but different content -> HTTP 409.
     @ExceptionHandler(EventConflictException.class)
     public ResponseEntity<String> handleEventConflict(
             EventConflictException exception) {
@@ -75,6 +50,17 @@ public class EventController {
                 .body(exception.getMessage());
     }
 
+    // Missing event ID -> HTTP 400.
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<String> handleInvalidEvent(
+            IllegalArgumentException exception) {
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(exception.getMessage());
+    }
+
+    // Retrieve an event by ID.
     @GetMapping("/{eventId}")
     public ResponseEntity<Event> getEvent(
             @PathVariable String eventId) {
@@ -84,6 +70,7 @@ public class EventController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    // Retrieve the full decision replay.
     @GetMapping("/{recommendationId}/replay")
     public ResponseEntity<DecisionReplayResponse> getDecisionReplay(
             @PathVariable String recommendationId) {
@@ -91,9 +78,10 @@ public class EventController {
         Optional<Event> recommendation =
                 eventService.findById(recommendationId);
 
-        if (recommendation.isEmpty() ||
-                !"RecommendationGenerated".equals(
+        if (recommendation.isEmpty()
+                || !"RecommendationGenerated".equals(
                         recommendation.get().getEventType())) {
+
             return ResponseEntity.notFound().build();
         }
 
@@ -121,6 +109,7 @@ public class EventController {
         return ResponseEntity.ok(replay);
     }
 
+    // Retrieve operator decisions for a recommendation.
     @GetMapping("/{recommendationId}/decisions")
     public List<Event> getDecisionsForRecommendation(
             @PathVariable String recommendationId) {
@@ -130,8 +119,10 @@ public class EventController {
         );
     }
 
+    // Retrieve the 50 most recent events.
     @GetMapping
     public List<Event> getRecentEvents() {
+
         return eventService.getRecentEvents();
     }
 }
