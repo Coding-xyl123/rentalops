@@ -2,9 +2,7 @@
 package com.olivia.rental.event;
 
 import com.olivia.rental.event.recommendation.RecommendationService;
-
 import jakarta.persistence.EntityManager;
-
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,15 +14,18 @@ public class EventProcessingService {
     private final EventService eventService;
     private final RecommendationService recommendationService;
     private final EntityManager entityManager;
+    private final OutboxEventRepository outboxEventRepository;
 
     public EventProcessingService(
             EventService eventService,
             RecommendationService recommendationService,
-            EntityManager entityManager) {
+            EntityManager entityManager,
+            OutboxEventRepository outboxEventRepository) {
 
         this.eventService = eventService;
         this.recommendationService = recommendationService;
         this.entityManager = entityManager;
+        this.outboxEventRepository = outboxEventRepository;
     }
 
     @Transactional
@@ -32,14 +33,10 @@ public class EventProcessingService {
 
         if (event.getEventId() == null
                 || event.getEventId().isBlank()) {
-
-            throw new IllegalArgumentException(
-                    "eventId is required"
-            );
+            throw new IllegalArgumentException("eventId is required");
         }
 
         // Serialize concurrent requests with the same event ID.
-        // The lock is released when this transaction ends.
         entityManager.createNativeQuery(
                 "SELECT pg_advisory_xact_lock("
                         + "hashtextextended(:eventId, 0))"
@@ -52,9 +49,7 @@ public class EventProcessingService {
 
         if (existing.isPresent()) {
 
-            // Validates that the incoming event matches
-            // the existing event. Throws EventConflictException
-            // if the content differs.
+            // Preserve existing idempotency and conflict handling.
             Event savedEvent = eventService.save(event);
 
             Event recommendation = eventService
@@ -63,6 +58,7 @@ public class EventProcessingService {
                     )
                     .orElse(null);
 
+            // Do not create another outbox message for a retry.
             return new ProcessingResult(
                     new EventProcessingResponse(
                             savedEvent,
@@ -72,14 +68,22 @@ public class EventProcessingService {
             );
         }
 
-        // First request: save the issue and its recommendation
-        // in the same transaction.
+        // New event: persist it and generate the recommendation.
         Event savedEvent = eventService.save(event);
 
         Event recommendation =
                 recommendationService.generateRecommendation(
                         savedEvent
                 );
+
+        // V2: Create an outbox record in the same transaction.
+        OutboxEvent outboxEvent = new OutboxEvent(
+                savedEvent.getEventId(),
+                savedEvent.getEventType(),
+                savedEvent.getPayload()
+        );
+
+        outboxEventRepository.save(outboxEvent);
 
         return new ProcessingResult(
                 new EventProcessingResponse(

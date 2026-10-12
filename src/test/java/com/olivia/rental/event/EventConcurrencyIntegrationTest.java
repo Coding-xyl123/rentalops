@@ -8,6 +8,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -33,6 +34,9 @@ class EventConcurrencyIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+private OutboxEventRepository outboxEventRepository;
 
     @Autowired
     private EventRepository eventRepository;
@@ -154,6 +158,17 @@ class EventConcurrencyIntegrationTest {
                     recommendationCount,
                     "Only one recommendation should be stored"
             );
+            long outboxCount = outboxEventRepository
+        .findAll()
+        .stream()
+        .filter(outbox -> eventId.equals(outbox.getEventId()))
+        .count();
+
+assertEquals(
+        1,
+        outboxCount,
+        "Only one outbox record should be stored for concurrent requests"
+);
         }
     }
 

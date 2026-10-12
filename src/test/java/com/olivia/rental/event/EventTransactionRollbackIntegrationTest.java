@@ -27,6 +27,9 @@ class EventTransactionRollbackIntegrationTest {
     @MockitoBean
     private RecommendationService recommendationService;
 
+    @Autowired
+private OutboxEventRepository outboxEventRepository;
+
     @Test
     void shouldRollbackEventWhenRecommendationGenerationFails() {
 
@@ -62,5 +65,17 @@ class EventTransactionRollbackIntegrationTest {
                 eventRepository.existsById(eventId),
                 "Event should not remain in the database after rollback"
         );
+
+        long outboxCount = outboxEventRepository.findAll()
+        .stream()
+        .filter(outbox -> eventId.equals(outbox.getEventId()))
+        .count();
+
+assertEquals(
+        0,
+        outboxCount,
+        "Outbox record should not exist after transaction rollback"
+);
     }
+    
 }
