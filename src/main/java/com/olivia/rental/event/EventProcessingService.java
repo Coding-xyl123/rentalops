@@ -5,6 +5,7 @@ import com.olivia.rental.event.recommendation.RecommendationService;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.Optional;
 
@@ -15,17 +16,20 @@ public class EventProcessingService {
     private final RecommendationService recommendationService;
     private final EntityManager entityManager;
     private final OutboxEventRepository outboxEventRepository;
+    private final ObjectMapper objectMapper;
 
     public EventProcessingService(
             EventService eventService,
             RecommendationService recommendationService,
             EntityManager entityManager,
-            OutboxEventRepository outboxEventRepository) {
+            OutboxEventRepository outboxEventRepository,
+            ObjectMapper objectMapper) {
 
         this.eventService = eventService;
         this.recommendationService = recommendationService;
         this.entityManager = entityManager;
         this.outboxEventRepository = outboxEventRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -76,11 +80,15 @@ public class EventProcessingService {
                         savedEvent
                 );
 
-        // V2: Create an outbox record in the same transaction.
+        // V2: Serialize the complete business event.
+        String eventJson =
+                objectMapper.writeValueAsString(savedEvent);
+
+        // Save the outbox message in the same transaction.
         OutboxEvent outboxEvent = new OutboxEvent(
                 savedEvent.getEventId(),
                 savedEvent.getEventType(),
-                savedEvent.getPayload()
+                eventJson
         );
 
         outboxEventRepository.save(outboxEvent);

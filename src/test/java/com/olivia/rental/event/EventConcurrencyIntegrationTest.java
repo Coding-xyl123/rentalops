@@ -169,6 +169,28 @@ assertEquals(
         outboxCount,
         "Only one outbox record should be stored for concurrent requests"
 );
+OutboxEvent storedOutbox = outboxEventRepository
+        .findAll()
+        .stream()
+        .filter(outbox -> eventId.equals(outbox.getEventId()))
+        .findFirst()
+        .orElseThrow();
+
+assertTrue(
+        storedOutbox.getPayload().contains("\"eventId\""),
+        "Outbox payload should contain eventId"
+);
+
+assertTrue(
+        storedOutbox.getPayload().contains("\"eventType\""),
+        "Outbox payload should contain eventType"
+);
+
+assertTrue(
+        storedOutbox.getPayload().contains("\"propertyId\""),
+        "Outbox payload should contain propertyId"
+);
+
         }
     }
 
