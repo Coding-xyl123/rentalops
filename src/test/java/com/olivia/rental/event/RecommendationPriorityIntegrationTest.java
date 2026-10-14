@@ -20,6 +20,15 @@ class RecommendationPriorityIntegrationTest {
     private EventProcessingService eventProcessingService;
 
     @Autowired
+    private KafkaEventProcessingService kafkaEventProcessingService;
+
+    @Autowired
+    private EventRepository eventRepository;
+
+    @Autowired
+    private ProcessedKafkaEventRepository processedRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Test
@@ -63,18 +72,58 @@ class RecommendationPriorityIntegrationTest {
                 "Water leak under kitchen sink"
         );
 
+        // First HTTP processing
         var first = eventProcessingService.process(event);
-        var second = eventProcessingService.process(event);
 
         assertTrue(first.created());
-        assertFalse(second.created());
+        assertNull(first.response().getRecommendation());
 
-        assertNotNull(first.response().getRecommendation());
-        assertNotNull(second.response().getRecommendation());
+        // Identical HTTP retry before Kafka processing
+        var second = eventProcessingService.process(event);
+
+        assertFalse(second.created());
+        assertNull(second.response().getRecommendation());
+
+        // First Kafka processing
+        kafkaEventProcessingService.process(event);
+
+        String recommendationId = "rec_" + event.getEventId();
+
+        Event recommendation = eventRepository
+                .findById(recommendationId)
+                .orElseThrow();
 
         assertEquals(
-                first.response().getRecommendation().getEventId(),
-                second.response().getRecommendation().getEventId()
+                "RecommendationGenerated",
+                recommendation.getEventType()
+        );
+
+        assertTrue(
+                processedRepository.existsById(event.getEventId())
+        );
+
+        // Duplicate Kafka processing
+        kafkaEventProcessingService.process(event);
+
+        // Still the same recommendation
+        Event recommendationAfterRetry = eventRepository
+                .findById(recommendationId)
+                .orElseThrow();
+
+        assertEquals(
+                recommendation.getEventId(),
+                recommendationAfterRetry.getEventId()
+        );
+
+        // HTTP retry after recommendation generation
+        var third = eventProcessingService.process(event);
+
+        assertFalse(third.created());
+        assertNotNull(third.response().getRecommendation());
+
+        assertEquals(
+                recommendationId,
+                third.response().getRecommendation().getEventId()
         );
     }
 
@@ -85,14 +134,26 @@ class RecommendationPriorityIntegrationTest {
 
         Event event = createEvent(description);
 
+        // Step 1: Save event and outbox
         var result = eventProcessingService.process(event);
 
         assertTrue(result.created());
 
-        Event recommendation =
-                result.response().getRecommendation();
+        // Recommendation is not generated synchronously
+        assertNull(result.response().getRecommendation());
 
-        assertNotNull(recommendation);
+        // Step 2: Simulate Kafka consumer processing
+        kafkaEventProcessingService.process(event);
+
+        // Step 3: Retrieve persisted recommendation
+        Event recommendation = eventRepository
+                .findById("rec_" + event.getEventId())
+                .orElseThrow();
+
+        assertEquals(
+                "RecommendationGenerated",
+                recommendation.getEventType()
+        );
 
         JsonNode payload =
                 objectMapper.readTree(recommendation.getPayload());
@@ -114,6 +175,11 @@ class RecommendationPriorityIntegrationTest {
         assertEquals(
                 event.getEventId(),
                 payload.path("triggerEventId").asText()
+        );
+
+        // Step 4: Verify Kafka processing marker
+        assertTrue(
+                processedRepository.existsById(event.getEventId())
         );
     }
 

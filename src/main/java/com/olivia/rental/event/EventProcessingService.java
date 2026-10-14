@@ -1,7 +1,6 @@
 
 package com.olivia.rental.event;
 
-import com.olivia.rental.event.recommendation.RecommendationService;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,20 +12,17 @@ import java.util.Optional;
 public class EventProcessingService {
 
     private final EventService eventService;
-    private final RecommendationService recommendationService;
     private final EntityManager entityManager;
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
 
     public EventProcessingService(
             EventService eventService,
-            RecommendationService recommendationService,
             EntityManager entityManager,
             OutboxEventRepository outboxEventRepository,
             ObjectMapper objectMapper) {
 
         this.eventService = eventService;
-        this.recommendationService = recommendationService;
         this.entityManager = entityManager;
         this.outboxEventRepository = outboxEventRepository;
         this.objectMapper = objectMapper;
@@ -53,16 +49,16 @@ public class EventProcessingService {
 
         if (existing.isPresent()) {
 
-            // Preserve existing idempotency and conflict handling.
+            // Preserve idempotency and conflict handling.
             Event savedEvent = eventService.save(event);
 
+            // Recommendation may or may not be ready yet.
             Event recommendation = eventService
                     .findRecommendationForTrigger(
                             savedEvent.getEventId()
                     )
                     .orElse(null);
 
-            // Do not create another outbox message for a retry.
             return new ProcessingResult(
                     new EventProcessingResponse(
                             savedEvent,
@@ -72,19 +68,14 @@ public class EventProcessingService {
             );
         }
 
-        // New event: persist it and generate the recommendation.
+        // Persist the new event without generating a recommendation.
         Event savedEvent = eventService.save(event);
 
-        Event recommendation =
-                recommendationService.generateRecommendation(
-                        savedEvent
-                );
-
-        // V2: Serialize the complete business event.
+        // Serialize the complete event envelope.
         String eventJson =
                 objectMapper.writeValueAsString(savedEvent);
 
-        // Save the outbox message in the same transaction.
+        // Persist outbox record in the same transaction.
         OutboxEvent outboxEvent = new OutboxEvent(
                 savedEvent.getEventId(),
                 savedEvent.getEventType(),
@@ -93,11 +84,9 @@ public class EventProcessingService {
 
         outboxEventRepository.save(outboxEvent);
 
+        // Kafka Consumer will generate the recommendation asynchronously.
         return new ProcessingResult(
-                new EventProcessingResponse(
-                        savedEvent,
-                        recommendation
-                ),
+                new EventProcessingResponse(savedEvent, null),
                 true
         );
     }

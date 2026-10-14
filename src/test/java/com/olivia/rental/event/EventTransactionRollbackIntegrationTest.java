@@ -13,7 +13,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doCallRealMethod;
 
 @SpringBootTest
 class EventTransactionRollbackIntegrationTest {
@@ -22,16 +23,22 @@ class EventTransactionRollbackIntegrationTest {
     private EventProcessingService eventProcessingService;
 
     @Autowired
+    private KafkaEventProcessingService kafkaEventProcessingService;
+
+    @Autowired
     private EventRepository eventRepository;
+
+    @Autowired
+    private OutboxEventRepository outboxEventRepository;
+
+    @Autowired
+    private ProcessedKafkaEventRepository processedRepository;
 
     @MockitoBean
     private RecommendationService recommendationService;
 
-    @Autowired
-private OutboxEventRepository outboxEventRepository;
-
     @Test
-    void shouldRollbackEventWhenRecommendationGenerationFails() {
+    void shouldRollbackKafkaProcessingWhenRecommendationFails() {
 
         String eventId = "evt_" + UUID.randomUUID();
 
@@ -44,15 +51,25 @@ private OutboxEventRepository outboxEventRepository;
                 "{\"description\":\"Broken bathroom light\"}"
         );
 
-        // Simulate a failure during recommendation generation.
-        when(recommendationService.generateRecommendation(any(Event.class)))
-                .thenThrow(new RuntimeException(
-                        "Simulated recommendation failure"
-                ));
+        // Step 1: HTTP transaction succeeds.
+        var result = eventProcessingService.process(event);
+
+        assertTrue(result.created());
+        assertTrue(eventRepository.existsById(eventId));
+
+        assertEquals(
+                1,
+                countOutboxRecords(eventId)
+        );
+
+        // Step 2: Simulate recommendation generation failure.
+        doThrow(new RuntimeException("Simulated recommendation failure"))
+                .when(recommendationService)
+                .generateRecommendation(any(Event.class));
 
         RuntimeException exception = assertThrows(
                 RuntimeException.class,
-                () -> eventProcessingService.process(event)
+                () -> kafkaEventProcessingService.process(event)
         );
 
         assertEquals(
@@ -60,22 +77,35 @@ private OutboxEventRepository outboxEventRepository;
                 exception.getMessage()
         );
 
-        // The transaction must roll back the original event.
-        assertFalse(
+        // Step 3: Original event and outbox remain committed.
+        assertTrue(
                 eventRepository.existsById(eventId),
-                "Event should not remain in the database after rollback"
+                "Original event should remain after consumer failure"
         );
 
-        long outboxCount = outboxEventRepository.findAll()
-        .stream()
-        .filter(outbox -> eventId.equals(outbox.getEventId()))
-        .count();
+        assertEquals(
+                1,
+                countOutboxRecords(eventId),
+                "Outbox record should remain after consumer failure"
+        );
 
-assertEquals(
-        0,
-        outboxCount,
-        "Outbox record should not exist after transaction rollback"
-);
+        // Step 4: Consumer transaction must roll back.
+        assertFalse(
+                processedRepository.existsById(eventId),
+                "Failed processing must not be marked complete"
+        );
+
+        assertFalse(
+                eventRepository.existsById("rec_" + eventId),
+                "Failed recommendation must not be persisted"
+        );
     }
-    
+
+    private long countOutboxRecords(String eventId) {
+        return outboxEventRepository.findAll()
+                .stream()
+                .filter(outbox ->
+                        eventId.equals(outbox.getEventId()))
+                .count();
+    }
 }

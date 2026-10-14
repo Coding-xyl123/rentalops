@@ -8,7 +8,6 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -36,30 +35,26 @@ class EventConcurrencyIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-private OutboxEventRepository outboxEventRepository;
+    private EventRepository eventRepository;
 
     @Autowired
-    private EventRepository eventRepository;
+    private OutboxEventRepository outboxEventRepository;
+
+    @Autowired
+    private ProcessedKafkaEventRepository processedRepository;
+
+    @Autowired
+    private KafkaEventProcessingService kafkaEventProcessingService;
 
     private final HttpClient client = HttpClient.newHttpClient();
 
     @Test
-    void concurrentRequestsShouldCreateOnlyOneRecommendation()
+    void concurrentRequestsShouldCreateOnlyOneEventAndOutbox()
             throws Exception {
 
-        String eventId = "evt_" + UUID.randomUUID();
-
-        Event event = new Event(
-                eventId,
-                "MaintenanceIssueDetected",
-                Instant.now(),
-                "property_001",
-                "concurrency_test",
-                "{\"description\":\"Bathroom light is broken\"}"
-        );
-
-        String requestBody =
-                objectMapper.writeValueAsString(event);
+        Event event = createEvent();
+        String eventId = event.getEventId();
+        String requestBody = objectMapper.writeValueAsString(event);
 
         CountDownLatch start = new CountDownLatch(1);
 
@@ -86,7 +81,6 @@ private OutboxEventRepository outboxEventRepository;
                         }
                     }, executor);
 
-            // Release both requests at nearly the same time.
             start.countDown();
 
             HttpResponse<String> response1 =
@@ -95,107 +89,174 @@ private OutboxEventRepository outboxEventRepository;
             HttpResponse<String> response2 =
                     second.get(15, TimeUnit.SECONDS);
 
+            // Exactly one request creates the event.
             assertTrue(
-                    isSuccess(response1.statusCode()),
-                    "First request failed with HTTP "
+                    (response1.statusCode() == 201
+                            && response2.statusCode() == 200)
+                    ||
+                    (response1.statusCode() == 200
+                            && response2.statusCode() == 201),
+                    "Expected one 201 and one 200, but got "
                             + response1.statusCode()
-                            + ": " + response1.body()
+                            + " and " + response2.statusCode()
             );
 
-            assertTrue(
-                    isSuccess(response2.statusCode()),
-                    "Second request failed with HTTP "
-                            + response2.statusCode()
-                            + ": " + response2.body()
-            );
+            JsonNode body1 = objectMapper.readTree(response1.body());
+            JsonNode body2 = objectMapper.readTree(response2.body());
 
-            JsonNode body1 =
-                    objectMapper.readTree(response1.body());
-
-            JsonNode body2 =
-                    objectMapper.readTree(response2.body());
-
-            String recommendationId1 = body1
-                    .path("recommendation")
-                    .path("eventId")
-                    .asText();
-
-            String recommendationId2 = body2
-                    .path("recommendation")
-                    .path("eventId")
-                    .asText();
-
-            assertFalse(recommendationId1.isBlank());
             assertEquals(
-                    recommendationId1,
-                    recommendationId2,
-                    "Both requests should return the same recommendation"
+                    eventId,
+                    body1.path("event").path("eventId").asText()
             );
 
-            long recommendationCount = eventRepository
-                    .findByEventTypeOrderByTimestampDesc(
-                            "RecommendationGenerated"
-                    )
-                    .stream()
-                    .filter(recommendation -> {
-                        try {
-                            JsonNode payload =
-                                    objectMapper.readTree(
-                                            recommendation.getPayload()
-                                    );
+            assertEquals(
+                    eventId,
+                    body2.path("event").path("eventId").asText()
+            );
 
-                            return eventId.equals(
-                                    payload.path("triggerEventId").asText()
-                            );
-                        } catch (Exception e) {
-                            return false;
-                        }
-                    })
-                    .count();
+            // No synchronous recommendation.
+            assertTrue(body1.path("recommendation").isNull());
+            assertTrue(body2.path("recommendation").isNull());
+
+            assertTrue(eventRepository.existsById(eventId));
 
             assertEquals(
                     1,
-                    recommendationCount,
-                    "Only one recommendation should be stored"
+                    countOutbox(eventId),
+                    "Concurrent HTTP requests must create one outbox record"
             );
-            long outboxCount = outboxEventRepository
-        .findAll()
-        .stream()
-        .filter(outbox -> eventId.equals(outbox.getEventId()))
-        .count();
 
-assertEquals(
-        1,
-        outboxCount,
-        "Only one outbox record should be stored for concurrent requests"
-);
-OutboxEvent storedOutbox = outboxEventRepository
-        .findAll()
-        .stream()
-        .filter(outbox -> eventId.equals(outbox.getEventId()))
-        .findFirst()
-        .orElseThrow();
+            OutboxEvent outbox = outboxEventRepository.findAll()
+                    .stream()
+                    .filter(item -> eventId.equals(item.getEventId()))
+                    .findFirst()
+                    .orElseThrow();
 
-assertTrue(
-        storedOutbox.getPayload().contains("\"eventId\""),
-        "Outbox payload should contain eventId"
-);
+            JsonNode envelope = objectMapper.readTree(outbox.getPayload());
 
-assertTrue(
-        storedOutbox.getPayload().contains("\"eventType\""),
-        "Outbox payload should contain eventType"
-);
-
-assertTrue(
-        storedOutbox.getPayload().contains("\"propertyId\""),
-        "Outbox payload should contain propertyId"
-);
-
+            assertEquals(eventId, envelope.path("eventId").asText());
+            assertEquals(
+                    "MaintenanceIssueDetected",
+                    envelope.path("eventType").asText()
+            );
+            assertEquals(
+                    "property_001",
+                    envelope.path("propertyId").asText()
+            );
         }
     }
 
-    private boolean isSuccess(int statusCode) {
-        return statusCode == 200 || statusCode == 201;
+    @Test
+    void concurrentKafkaProcessingShouldCreateOnlyOneRecommendation()
+            throws Exception {
+
+        Event event = createEvent();
+        String eventId = event.getEventId();
+
+        // Persist event and outbox before Kafka processing.
+        HttpResponse<String> response =
+                postEvent(objectMapper.writeValueAsString(event));
+
+        assertEquals(201, response.statusCode());
+
+        Event savedEvent = eventRepository.findById(eventId)
+                .orElseThrow();
+
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (ExecutorService executor =
+                     Executors.newFixedThreadPool(2)) {
+
+            CompletableFuture<Void> first =
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            start.await();
+                            kafkaEventProcessingService.process(savedEvent);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    }, executor);
+
+            CompletableFuture<Void> second =
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            start.await();
+                            kafkaEventProcessingService.process(savedEvent);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    }, executor);
+
+            start.countDown();
+
+            CompletableFuture.allOf(first, second)
+                    .get(15, TimeUnit.SECONDS);
+        }
+
+        String recommendationId = "rec_" + eventId;
+
+        Event recommendation = eventRepository
+                .findById(recommendationId)
+                .orElseThrow();
+
+        assertEquals(
+                "RecommendationGenerated",
+                recommendation.getEventType()
+        );
+
+        assertEquals(
+                1,
+                eventRepository
+                        .findByEventTypeOrderByTimestampDesc(
+                                "RecommendationGenerated"
+                        )
+                        .stream()
+                        .filter(item -> {
+                            try {
+                                JsonNode payload =
+                                        objectMapper.readTree(
+                                                item.getPayload()
+                                        );
+
+                                return eventId.equals(
+                                        payload.path("triggerEventId").asText()
+                                );
+                            } catch (Exception e) {
+                                return false;
+                            }
+                        })
+                        .count(),
+                "Concurrent Kafka processing must create one recommendation"
+        );
+
+        assertTrue(
+                processedRepository.existsById(eventId),
+                "Kafka processing marker must be persisted"
+        );
+
+        assertEquals(
+                1,
+                countOutbox(eventId),
+                "Kafka processing must not duplicate the original outbox"
+        );
+    }
+
+    private Event createEvent() {
+        return new Event(
+                "evt_" + UUID.randomUUID(),
+                "MaintenanceIssueDetected",
+                Instant.now(),
+                "property_001",
+                "concurrency_test",
+                "{\"description\":\"Bathroom light is broken\"}"
+        );
+    }
+
+    private long countOutbox(String eventId) {
+        return outboxEventRepository.findAll()
+                .stream()
+                .filter(item -> eventId.equals(item.getEventId()))
+                .count();
     }
 
     private HttpResponse<String> postEvent(String requestBody)
