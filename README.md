@@ -126,6 +126,4 @@ SHOW_SQL=false
 - **V2 candidate scope:** asynchronous Kafka processing, idempotent consumers, retry / dead-letter handling, and observability.
 - **V3 candidate scope:** candidate generation, ranking, and feedback-driven evaluation.
 
-## License
 
-*No license has been specified yet.*
